@@ -1,193 +1,99 @@
 package studentmarksportal;
 
-import java.sql.*;
 import java.util.*;
 
 public class DBManager {
-    private static final String URL = "jdbc:mysql://localhost:3306/student_portal";
-    private static final String USER = "root";
-    private static final String PASS = "root";
+    private static Map<String, User> users = new HashMap<>();
+    private static Set<String> courses = new HashSet<>();
+    private static Map<String, Set<String>> studentCourses = new HashMap<>();
+    private static Map<String, Map<String, Integer>> marks = new HashMap<>();
+
+    private static class User {
+        String username;
+        String password;
+        boolean isAdmin;
+
+        User(String username, String password, boolean isAdmin) {
+            this.username = username;
+            this.password = password;
+            this.isAdmin = isAdmin;
+        }
+    }
 
     public DBManager() {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             Statement stmt = conn.createStatement()) {
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS users (" +
-                    "username VARCHAR(50) PRIMARY KEY," +
-                    "password VARCHAR(100) NOT NULL," +
-                    "is_admin BOOLEAN DEFAULT FALSE)");
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS courses (" +
-                    "course_name VARCHAR(100) PRIMARY KEY)");
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS student_courses (" +
-                    "username VARCHAR(50)," +
-                    "course_name VARCHAR(100)," +
-                    "PRIMARY KEY (username, course_name)," +
-                    "FOREIGN KEY (username) REFERENCES users(username) ON DELETE CASCADE," +
-                    "FOREIGN KEY (course_name) REFERENCES courses(course_name) ON DELETE CASCADE)");
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS marks (" +
-                    "username VARCHAR(50)," +
-                    "course_name VARCHAR(100)," +
-                    "mark INT DEFAULT 0," +
-                    "PRIMARY KEY (username, course_name)," +
-                    "FOREIGN KEY (username, course_name) REFERENCES student_courses(username, course_name) ON DELETE CASCADE)");
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        // Initialize with sample data
+        addUser("admin", "admin123", true);
+        addUser("student1", "pass123", false);
+        addUser("student2", "pass123", false);
+        
+        addCourse("Math");
+        addCourse("Science");
+        addCourse("English");
+        
+        enrollStudent("student1", "Math");
+        enrollStudent("student1", "Science");
+        enrollStudent("student2", "English");
+        enrollStudent("student2", "Science");
+        
+        setMark("student1", "Math", 85);
+        setMark("student1", "Science", 90);
+        setMark("student2", "English", 88);
+        setMark("student2", "Science", 92);
     }
 
     public boolean validateLogin(String username, String password) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("SELECT * FROM users WHERE username = ? AND password = ?")) {
-
-            stmt.setString(1, username);
-            stmt.setString(2, password);
-            ResultSet rs = stmt.executeQuery();
-            return rs.next();
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
-        }
+        User user = users.get(username);
+        return user != null && user.password.equals(password);
     }
 
     public boolean isAdmin(String username) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("SELECT is_admin FROM users WHERE username = ?")) {
-
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getBoolean("is_admin");
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return false;
+        User user = users.get(username);
+        return user != null && user.isAdmin;
     }
 
     public void addUser(String username, String password, boolean isAdmin) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("INSERT INTO users (username, password, is_admin) VALUES (?, ?, ?)")) {
-
-            stmt.setString(1, username);
-            stmt.setString(2, password);
-            stmt.setBoolean(3, isAdmin);
-            stmt.executeUpdate();
-
-        } catch (SQLException e) {
-            e.printStackTrace();
+        if (!users.containsKey(username)) {
+            users.put(username, new User(username, password, isAdmin));
         }
     }
 
     public void addCourse(String courseName) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("INSERT IGNORE INTO courses (course_name) VALUES (?)")) {
-
-            stmt.setString(1, courseName);
-            stmt.executeUpdate();
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
+        courses.add(courseName);
     }
 
     public void enrollStudent(String username, String courseName) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("INSERT INTO student_courses (username, course_name) VALUES (?, ?)")) {
-
-            stmt.setString(1, username);
-            stmt.setString(2, courseName);
-            stmt.executeUpdate();
-
-        } catch (SQLException e) {
-            e.printStackTrace();
+        if (users.containsKey(username) && courses.contains(courseName)) {
+            studentCourses.computeIfAbsent(username, k -> new HashSet<>()).add(courseName);
         }
     }
 
     public List<String> getStudentCourses(String username) {
-        List<String> courses = new ArrayList<>();
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("SELECT course_name FROM student_courses WHERE username = ?")) {
-
-            stmt.setString(1, username);
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                courses.add(rs.getString("course_name"));
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return courses;
+        Set<String> courseSet = studentCourses.getOrDefault(username, new HashSet<>());
+        return new ArrayList<>(courseSet);
     }
 
     public void setMark(String username, String courseName, int mark) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("REPLACE INTO marks (username, course_name, mark) VALUES (?, ?, ?)")) {
-
-            stmt.setString(1, username);
-            stmt.setString(2, courseName);
-            stmt.setInt(3, mark);
-            stmt.executeUpdate();
-
-        } catch (SQLException e) {
-            e.printStackTrace();
+        if (users.containsKey(username) && courses.contains(courseName)) {
+            marks.computeIfAbsent(username, k -> new HashMap<>()).put(courseName, mark);
         }
     }
 
     public int getMark(String username, String courseName) {
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("SELECT mark FROM marks WHERE username = ? AND course_name = ?")) {
-
-            stmt.setString(1, username);
-            stmt.setString(2, courseName);
-            ResultSet rs = stmt.executeQuery();
-            if (rs.next()) {
-                return rs.getInt("mark");
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return -1; // Not found
+        Map<String, Integer> userMarks = marks.getOrDefault(username, new HashMap<>());
+        return userMarks.getOrDefault(courseName, -1);
     }
 
-    // ✅ NEW METHOD: Get all students
     public List<String> getAllStudents() {
         List<String> students = new ArrayList<>();
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             PreparedStatement stmt = conn.prepareStatement("SELECT username FROM users WHERE is_admin = FALSE")) {
-
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) {
-                students.add(rs.getString("username"));
+        for (Map.Entry<String, User> entry : users.entrySet()) {
+            if (!entry.getValue().isAdmin) {
+                students.add(entry.getKey());
             }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
         }
         return students;
     }
 
-    // ✅ NEW METHOD: Get all courses
     public List<String> getAllCourses() {
-        List<String> courses = new ArrayList<>();
-        try (Connection conn = DriverManager.getConnection(URL, USER, PASS);
-             Statement stmt = conn.createStatement()) {
-
-            ResultSet rs = stmt.executeQuery("SELECT course_name FROM courses");
-            while (rs.next()) {
-                courses.add(rs.getString("course_name"));
-            }
-
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return courses;
+        return new ArrayList<>(courses);
     }
 }
